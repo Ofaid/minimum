@@ -32,10 +32,12 @@ jobs:
           java-version: "21"
           cache: gradle
       
-      # PERBAIKAN UTAMA: Gunakan action resmi untuk setup SDK
-      # Ini otomatis menginstal cmdline-tools dan platform-tools tanpa error
+      # PERBAIKAN UTAMA: Tambahkan blok 'with' untuk mencegah instalasi paket 'tools' yang usang
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          accept-android-sdk-license: true
       
       - name: Install pinned NDK & Build Tools
         run: |
