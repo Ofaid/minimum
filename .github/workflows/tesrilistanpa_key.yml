@@ -1,4 +1,4 @@
-name: Build Simple Release APK
+name: Build Minimum Release APK
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout Kode & Submodule
+      # 1. Checkout Kode & Submodule (Wajib recursive!)
       - uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -23,15 +23,32 @@ jobs:
       
       - uses: android-actions/setup-android@v4
       
-      # 3. ✅ STEP KRUSIAL: INSTALL NDK YANG DIMINTA HUMAL
-      # Ini solusi pasti biar nggak error "NDK is not installed"
-      - name: Install Required NDK
+      # 3. ✅ STEP KRUSIAL: HAPUS PAKSA ndkVersion DARI SUBMODULE
+      # Ini solusi biar nggak perlu edit file submodule manual di HP
+      - name: Fix Humla NDK Config (Remove ndkVersion)
         run: |
-          echo " Menginstall NDK versi 25.1.8937393..."
+          echo "🔍 Mengecek file libraries/humla/build.gradle..."
+          if [ -f "libraries/humla/build.gradle" ]; then
+            # Hapus semua baris yang mengandung 'ndkVersion'
+            sed -i '/ndkVersion/d' libraries/humla/build.gradle
+            echo "✅ Baris ndkVersion berhasil dihapus dari humla/build.gradle"
+            
+            # Verifikasi: tampilkan isi file untuk memastikan
+            echo "--- Isi build.gradle setelah fix ---"
+            grep -n "ndk" libraries/humla/build.gradle || echo "Tidak ada lagi referensi ndk!"
+          else
+            echo "⚠️ File libraries/humla/build.gradle tidak ditemukan!"
+            exit 1
+          fi
+      
+      # 4. Install NDK (Jaga-jaga kalau masih butuh untuk compile native code lain)
+      - name: Install Required NDK for Minimum
+        run: |
+          echo "⬇️ Menginstall NDK 25.1.8937393 sebagai backup..."
           sdkmanager "ndk;25.1.8937393" --no_https
           echo "✅ NDK berhasil diinstall!"
       
-      # 4. Build SpongyCastle Dulu
+      # 5. Build SpongyCastle Dulu (Dependency Wajib Minimum)
       - name: Build SpongyCastle
         run: |
           cd libraries/humla/libs/humla-spongycastle
@@ -52,13 +69,14 @@ jobs:
             -PtargetCompatibility=1.8 \
             --no-daemon
       
-      # 5. Build APK Release Utama
-      - name: Build Release APK
+      # 6. Build APK Release Utama (Minimum FOSS)
+      - name: Build Minimum Release APK
         run: |
           chmod +x gradlew
-          ./gradlew assembleFossRelease --no-daemon --stacktrace
+          # Gunakan task assembleFossRelease sesuai flavor project Minimum
+          ./gradlew :app:assembleFossRelease --no-daemon --stacktrace
       
-      # 6. Upload Hasil
+      # 7. Upload Hasil
       - uses: actions/upload-artifact@v4
         with:
           name: Minimum-Simple-Release
