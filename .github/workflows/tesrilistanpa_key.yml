@@ -10,10 +10,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # 1. Checkout Kode & Submodule (Wajib recursive!)
       - uses: actions/checkout@v4
         with:
           submodules: recursive
       
+      # 2. Setup Java & Android SDK
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -21,10 +23,24 @@ jobs:
       
       - uses: android-actions/setup-android@v4
       
-      # Build SpongyCastle dulu
+      # 3. ✅ STEP KRUSIAL: Hapus ndkVersion dari Submodule Humla
+      # Ini solusi biar nggak perlu edit file submodule manual di HP
+      - name: Fix Humla NDK Config
+        run: |
+          echo "🔍 Mengecek file libraries/humla/build.gradle..."
+          if [ -f "libraries/humla/build.gradle" ]; then
+            # Hapus semua baris yang mengandung 'ndkVersion'
+            sed -i '/ndkVersion/d' libraries/humla/build.gradle
+            echo "✅ Baris ndkVersion berhasil dihapus dari humla/build.gradle"
+          else
+            echo "⚠️ File libraries/humla/build.gradle tidak ditemukan!"
+          fi
+      
+      # 4. Build SpongyCastle Dulu
       - name: Build SpongyCastle
         run: |
           cd libraries/humla/libs/humla-spongycastle
+          
           if [ ! -f gradlew ]; then
             wget -q https://services.gradle.org/distributions/gradle-4.10.3-bin.zip
             unzip -q gradle-4.10.3-bin.zip
@@ -33,15 +49,21 @@ jobs:
             chmod +x gradlew
             GRADLE="./gradlew"
           fi
+          
+          # Patch archiveClassifier & Build tanpa Javadoc
           sed -i 's/archiveClassifier = .*/classifier = "javadoc"/g' build.gradle
-          $GRADLE build -x test -x javadoc -PsourceCompatibility=1.8 -PtargetCompatibility=1.8 --no-daemon
+          $GRADLE build -x test -x javadoc \
+            -PsourceCompatibility=1.8 \
+            -PtargetCompatibility=1.8 \
+            --no-daemon
       
-      # Build APK Release (tanpa signing key rahasia, pakai debug key)
+      # 5. Build APK Release Utama
       - name: Build Release APK
         run: |
           chmod +x gradlew
           ./gradlew assembleFossRelease --no-daemon --stacktrace
       
+      # 6. Upload Hasil
       - uses: actions/upload-artifact@v4
         with:
           name: AnonMumble-Simple-Release
