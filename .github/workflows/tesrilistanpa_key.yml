@@ -1,0 +1,48 @@
+name: Build Simple Release APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      
+      - uses: android-actions/setup-android@v4
+      
+      # Build SpongyCastle dulu
+      - name: Build SpongyCastle
+        run: |
+          cd libraries/humla/libs/humla-spongycastle
+          if [ ! -f gradlew ]; then
+            wget -q https://services.gradle.org/distributions/gradle-4.10.3-bin.zip
+            unzip -q gradle-4.10.3-bin.zip
+            GRADLE="./gradle-4.10.3/bin/gradle"
+          else
+            chmod +x gradlew
+            GRADLE="./gradlew"
+          fi
+          sed -i 's/archiveClassifier = .*/classifier = "javadoc"/g' build.gradle
+          $GRADLE build -x test -x javadoc -PsourceCompatibility=1.8 -PtargetCompatibility=1.8 --no-daemon
+      
+      # Build APK Release (tanpa signing key rahasia, pakai debug key)
+      - name: Build Release APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleFossRelease --no-daemon --stacktrace
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AnonMumble-Simple-Release
+          path: app/build/outputs/apk/foss/release/*.apk
