@@ -10,7 +10,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout Kode & Submodule (Wajib recursive!)
+      # 1. Checkout Kode & Submodule
       - uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -23,18 +23,13 @@ jobs:
       
       - uses: android-actions/setup-android@v4
       
-      # 3. ✅ STEP KRUSIAL: Hapus ndkVersion dari Submodule Humla
-      # Ini solusi biar nggak perlu edit file submodule manual di HP
-      - name: Fix Humla NDK Config
+      # 3. ✅ STEP KRUSIAL: INSTALL NDK YANG DIMINTA HUMAL
+      # Ini solusi pasti biar nggak error "NDK is not installed"
+      - name: Install Required NDK
         run: |
-          echo "🔍 Mengecek file libraries/humla/build.gradle..."
-          if [ -f "libraries/humla/build.gradle" ]; then
-            # Hapus semua baris yang mengandung 'ndkVersion'
-            sed -i '/ndkVersion/d' libraries/humla/build.gradle
-            echo "✅ Baris ndkVersion berhasil dihapus dari humla/build.gradle"
-          else
-            echo "⚠️ File libraries/humla/build.gradle tidak ditemukan!"
-          fi
+          echo " Menginstall NDK versi 25.1.8937393..."
+          sdkmanager "ndk;25.1.8937393" --no_https
+          echo "✅ NDK berhasil diinstall!"
       
       # 4. Build SpongyCastle Dulu
       - name: Build SpongyCastle
@@ -66,5 +61,5 @@ jobs:
       # 6. Upload Hasil
       - uses: actions/upload-artifact@v4
         with:
-          name: AnonMumble-Simple-Release
+          name: Minimum-Simple-Release
           path: app/build/outputs/apk/foss/release/*.apk
