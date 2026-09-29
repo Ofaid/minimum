@@ -110,9 +110,21 @@ jobs:
           build-tools: "34.0.0"
           
 
-      - name: Install pinned NDK
-        run: sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
-
+      - name: Setup Android SDK & Install Pinned NDK
+        run: |
+          # Set path ke Android SDK bawaan runner GitHub
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+          
+          # Simpan ke environment GitHub biar step berikutnya bisa pakai
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "PATH=$PATH" >> $GITHUB_ENV
+          
+          # Terima semua lisensi secara otomatis
+          yes | sdkmanager --licenses > /dev/null 2>&1
+          
+          # Install API 34, Build Tools, dan NDK versi spesifik sekaligus
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125" "platform-tools"
       - name: Materialize signing configuration
         env:
           KEYSTORE_BASE64: ${{ secrets.MINIMUM_RELEASE_KEYSTORE_BASE64 }}
