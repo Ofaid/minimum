@@ -105,39 +105,6 @@ jobs:
           cache: gradle
 
       # STEP SETUP SDK & NDK - INSTALL VERSI 25.1 SESUAI PERMINTAAN BUILD.GRADLE
-      - name: Setup Android SDK & Install Pinned NDK
-        run: |
-          export ANDROID_HOME=/usr/local/lib/android/sdk
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-          
-          # Path NDK yang DIPAKSA oleh build.gradle (versi 25.1)
-          NDK_PATH=$ANDROID_HOME/ndk/25.1.8937393
-          
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-          echo "PATH=$PATH" >> $GITHUB_ENV
-          echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
-          
-          yes | sdkmanager --licenses > /dev/null 2>&1
-          
-          # Install API 34, Build Tools, DAN NDK VERSI 25.1 (sesuai build.gradle)
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" \
-            "ndk;25.1.8937393" \
-            "platform-tools"
-          
-          # Verifikasi folder NDK 25.1 ada
-          if [ ! -d "$NDK_PATH" ]; then
-            echo "ERROR: NDK 25.1 folder not found!"
-            ls -la $ANDROID_HOME/ndk/
-            exit 1
-          fi
-          
-          # Buat local.properties dengan path NDK 25.1
-          echo "ndk.dir=$NDK_PATH" > local.properties
-          echo "sdk.dir=$ANDROID_HOME" >> local.properties
-          
-          echo "✅ NDK 25.1.8937393 installed successfully"
-
-      # STEP MATERIALIZE SIGNING DENGAN VALIDASI KEYTOOL
       - name: Materialize and validate signing configuration
         env:
           KEYSTORE_BASE64: ${{ secrets.MINIMUM_RELEASE_KEYSTORE_BASE64 }}
@@ -145,9 +112,9 @@ jobs:
           KEY_ALIAS: ${{ secrets.MINIMUM_RELEASE_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.MINIMUM_RELEASE_KEY_PASSWORD }}
         run: |
-          # 1. Decode keystore dari Base64
+          # 1. Decode keystore dari Base64 (HAPUS --strict)
           KEYSTORE_PATH="$RUNNER_TEMP/minimum-release.jks"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode --strict > "$KEYSTORE_PATH"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
           
           # 2. Validasi keystore menggunakan keytool
           echo " Validating keystore..."
