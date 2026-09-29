@@ -16,7 +16,6 @@ on:
         description: Kode versi Android
         required: true
         type: string
-      # TAMBAHAN: Input untuk password & alias biar kamu kontrol penuh
       keystore_password:
         description: Password untuk keystore (minimal 6 karakter)
         required: true
@@ -100,7 +99,24 @@ jobs:
           java-version: "21"
           cache: gradle
 
-      # STEP BARU: GENERATE KEYSTORE LANGSUNG DI SERVER X64
+      # STEP 1: SETUP SDK & NDK DULU (WAJIB SEBELUM BUILD)
+      - name: Pasang Android SDK & NDK Manual
+        run: |
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+          
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "PATH=$PATH" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
+          
+          yes | sdkmanager --licenses > /dev/null 2>&1
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;25.1.8937393" "platform-tools"
+          
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "ndk.dir=$ANDROID_HOME/ndk/25.1.8937393" >> local.properties
+          echo "✅ SDK & NDK siap!"
+
+      # STEP 2: BARU GENERATE KEYSTORE SETELAH SDK SIAP
       - name: 🔑 Generate Keystore Baru di Runner (x64 Native)
         env:
           STORE_PASS: ${{ inputs.keystore_password }}
@@ -120,17 +136,14 @@ jobs:
             -keypass "$KEY_PASS" \
             -dname "CN=Minimum Dev, OU=Dev, O=Ofaid, L=Indonesia, ST=Jawa, C=ID"
           
-          # Verifikasi file berhasil dibuat
           FILE_SIZE=$(wc -c < "$KEYSTORE_PATH")
           echo "✅ Keystore berhasil dibuat! Ukuran: $FILE_SIZE bytes"
           
-          # Set environment variables untuk step selanjutnya
           echo "MINIMUM_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
           echo "MINIMUM_STORE_PASSWORD=$STORE_PASS" >> "$GITHUB_ENV"
           echo "MINIMUM_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
           echo "MINIMUM_KEY_PASSWORD=$KEY_PASS" >> "$GITHUB_ENV"
           
-          # Buat signing.gradle
           cat > app/signing.gradle <<'GRADLE'
           android {
               signingConfigs {
@@ -150,23 +163,6 @@ jobs:
           GRADLE
           
           echo "✅ Signing config siap!"
-
-      # STEP SETUP SDK & NDK MANUAL (PASTI JALAN)
-      - name: Pasang Android SDK & NDK Manual
-        run: |
-          export ANDROID_HOME=/usr/local/lib/android/sdk
-          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
-          
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-          echo "PATH=$PATH" >> $GITHUB_ENV
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
-          
-          yes | sdkmanager --licenses > /dev/null 2>&1
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;25.1.8937393" "platform-tools"
-          
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "ndk.dir=$ANDROID_HOME/ndk/25.1.8937393" >> local.properties
-          echo "✅ SDK & NDK siap!"
 
       - name: Bangun pustaka SpongyCastle
         working-directory: libraries/humla/libs/humla-spongycastle
