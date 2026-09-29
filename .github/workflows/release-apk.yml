@@ -137,14 +137,47 @@ jobs:
           
           echo "✅ NDK 25.1.8937393 installed successfully"
 
-      - name: Materialize signing configuration
+      # STEP MATERIALIZE SIGNING DENGAN VALIDASI KEYTOOL
+      - name: Materialize and validate signing configuration
         env:
           KEYSTORE_BASE64: ${{ secrets.MINIMUM_RELEASE_KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.MINIMUM_RELEASE_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.MINIMUM_RELEASE_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.MINIMUM_RELEASE_KEY_PASSWORD }}
         run: |
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/minimum-release.jks"
+          # 1. Decode keystore dari Base64
+          KEYSTORE_PATH="$RUNNER_TEMP/minimum-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode --strict > "$KEYSTORE_PATH"
+          
+          # 2. Validasi keystore menggunakan keytool
+          echo " Validating keystore..."
+          if ! keytool -list \
+            -keystore "$KEYSTORE_PATH" \
+            -storepass "$STORE_PASSWORD" \
+            -alias "$KEY_ALIAS" \
+            -keypass "$KEY_PASSWORD" \
+            > /dev/null 2>&1; then
+            
+            echo " ERROR: Keystore validation failed!"
+            echo "Possible causes:"
+            echo "  - Wrong store password or key password"
+            echo "  - Wrong alias (case-sensitive)"
+            echo "  - Corrupted keystore file (bad base64 encoding)"
+            
+            # Coba list semua alias untuk debugging
+            echo "Listing all aliases in keystore:"
+            keytool -list -keystore "$KEYSTORE_PATH" -storepass "$STORE_PASSWORD" || true
+            exit 1
+          fi
+          echo "✅ Keystore validated successfully!"
+          
+          # 3. Set environment variables untuk Gradle
+          echo "MINIMUM_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "MINIMUM_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "MINIMUM_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "MINIMUM_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          
+          # 4. Buat file signing.gradle
           cat > app/signing.gradle <<'GRADLE'
           android {
               signingConfigs {
@@ -157,10 +190,6 @@ jobs:
               }
           }
           GRADLE
-          echo "MINIMUM_KEYSTORE_PATH=$RUNNER_TEMP/minimum-release.jks" >> "$GITHUB_ENV"
-          echo "MINIMUM_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "MINIMUM_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
-          echo "MINIMUM_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
 
       # STEP BUILD TANPA SUNTIKAN PATH NDK (BIAR GRADLE BACA DARI LOCAL.PROPERTIES)
       - name: Build patched Spongy Castle jars
