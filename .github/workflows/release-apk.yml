@@ -103,13 +103,8 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: gradle
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          api-level: 34
-          build-tools: "34.0.0"
-          
 
+      # INI STEP PENGGANTI YANG SUDAH DIBERSIHKAN
       - name: Setup Android SDK & Install Pinned NDK
         run: |
           # Set path ke Android SDK bawaan runner GitHub
@@ -125,6 +120,7 @@ jobs:
           
           # Install API 34, Build Tools, dan NDK versi spesifik sekaligus
           sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125" "platform-tools"
+
       - name: Materialize signing configuration
         env:
           KEYSTORE_BASE64: ${{ secrets.MINIMUM_RELEASE_KEYSTORE_BASE64 }}
