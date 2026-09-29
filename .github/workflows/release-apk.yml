@@ -104,28 +104,32 @@ jobs:
           java-version: "21"
           cache: gradle
 
-      # STEP INI SUDAH DIPERBAIKI UNTUK NDK
+      # STEP SETUP SDK & NDK YANG SUDAH DIPERBAIKI
       - name: Setup Android SDK & Install Pinned NDK
         run: |
-          # Set path ke Android SDK bawaan runner GitHub
           export ANDROID_HOME=/usr/local/lib/android/sdk
           export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
           
-          # PENTING: Tentukan path NDK secara eksplisit
-          export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125
-          export ANDROID_NDK_LATEST_HOME=$ANDROID_HOME/ndk/26.1.10909125
+          # Path NDK yang pasti
+          NDK_PATH=$ANDROID_HOME/ndk/26.1.10909125
           
-          # Simpan semua environment ke GitHub biar step berikutnya bisa pakai
           echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
           echo "PATH=$PATH" >> $GITHUB_ENV
-          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
-          echo "ANDROID_NDK_LATEST_HOME=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
           
-          # Terima semua lisensi secara otomatis
           yes | sdkmanager --licenses > /dev/null 2>&1
-          
-          # Install API 34, Build Tools, dan NDK versi spesifik sekaligus
           sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125" "platform-tools"
+          
+          # Verifikasi folder NDK ada
+          if [ ! -d "$NDK_PATH" ]; then
+            echo "ERROR: NDK folder not found!"
+            ls -la $ANDROID_HOME/ndk/
+            exit 1
+          fi
+          
+          # Buat local.properties agar Gradle root project tahu path NDK
+          echo "ndk.dir=$NDK_PATH" > local.properties
+          echo "sdk.dir=$ANDROID_HOME" >> local.properties
 
       - name: Materialize signing configuration
         env:
@@ -152,16 +156,22 @@ jobs:
           echo "MINIMUM_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
           echo "MINIMUM_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
 
+      # STEP INI SUDAH DITAMBAHKAN SUNTIKAN PATH NDK (-P...)
       - name: Build patched Spongy Castle jars
         working-directory: libraries/humla/libs/humla-spongycastle
         run: |
           chmod +x ../../gradlew
-          ../../gradlew jar --no-daemon
+          ../../gradlew jar --no-daemon \
+            -Pandroid.ndk.dir=/usr/local/lib/android/sdk/ndk/26.1.10909125 \
+            -Pandroid.sdk.dir=/usr/local/lib/android/sdk
 
+      # STEP INI JUGA SUDAH DITAMBAHKAN SUNTIKAN PATH NDK (-P...)
       - name: Test and assemble signed FOSS release
         run: |
           chmod +x gradlew
-          ./gradlew :app:testFossDebugUnitTest :app:assembleFossRelease --no-daemon --stacktrace
+          ./gradlew :app:testFossDebugUnitTest :app:assembleFossRelease --no-daemon --stacktrace \
+            -Pandroid.ndk.dir=/usr/local/lib/android/sdk/ndk/26.1.10909125 \
+            -Pandroid.sdk.dir=/usr/local/lib/android/sdk
 
       - name: Verify APK signature and identity
         env:
@@ -211,7 +221,9 @@ jobs:
 
       - name: Build temporary Wi-Fi provisioner
         run: |
-          ./gradlew -p tools/t99-wifi-provisioner :app:assembleDebug --no-daemon --stacktrace
+          ./gradlew -p tools/t99-wifi-provisioner :app:assembleDebug --no-daemon --stacktrace \
+            -Pandroid.ndk.dir=/usr/local/lib/android/sdk/ndk/26.1.10909125 \
+            -Pandroid.sdk.dir=/usr/local/lib/android/sdk
           test -f tools/t99-wifi-provisioner/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Package standalone Windows provisioning bundle
@@ -402,11 +414,11 @@ jobs:
             echo "- Unknown or ambiguous hardware is rejected before provisioning changes."
             echo
             echo "## Physical-test status and known limitations"
-            echo "- Physical acceptance is operator-gated; this workflow ini tidak mengklaim PTT, audio, room-switching atau Location berhasil tanpa bukti perangkat yang ditinjau."
-            echo "- Provisioning PASS memerlukan ID yang sama Ready setelah reboot; \`-SkipReboot\` secara eksplisit TIDAK LENGKAP."
-            echo "- Updater perangkat yang ada memverifikasi bundle/APK/signer yang tepat, mempertahankan data aplikasi, dan menolak migrasi yang tidak diketahui atau perubahan signer debug-ke-rilis."
-            echo "- Penerimaan updater harus dicatat secara terpisah untuk setiap model/saluran penandatanganan yang diklaim; tidak ada jalannya workflow rilis itu sendiri yang membuktikan penerimaan fisik."
-            echo "- Lokasi Jaringan T56 memerlukan persetujuan pada perangkat dalam 120 detik dan tetap tunduk pada batas keamanan manual yang terdokumentasi."
+            echo "- Physical acceptance is operator-gated; this workflow does not claim PTT, audio, room-switching or Location success without reviewed device evidence."
+            echo "- Provisioning PASS requires same-ID Ready after reboot; \`-SkipReboot\` is explicitly INCOMPLETE."
+            echo "- The existing-device updater verifies the exact bundle/APK/signer, preserves app data, and refuses unknown migrations or debug-to-release signer changes."
+            echo "- Updater acceptance must be recorded separately for every model/signing channel claimed; no release workflow run itself proves physical acceptance."
+            echo "- T56 network Location requires on-device consent within 120 seconds and remains subject to the documented manual safety boundary."
             echo
             echo "## Generated changes"
             if [[ -s "$changes" ]]; then cat "$changes"; else echo "- No generated commit summary available."; fi
