@@ -104,60 +104,60 @@ jobs:
           java-version: "21"
           cache: gradle
 
-      # STEP SETUP SDK & NDK - INSTALL VERSI 25.1 SESUAI PERMINTAAN BUILD.GRADLE
-      - name: Materialize and validate signing configuration
+      # STEP SETUP SDK & NDK MANUAL (PASTI JALAN)
+      - name: Setup Android SDK & Install Pinned NDK
+        run: |
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+          
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "PATH=$PATH" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
+          
+          yes | sdkmanager --licenses > /dev/null 2>&1
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;25.1.8937393" "platform-tools"
+          
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "ndk.dir=$ANDROID_HOME/ndk/25.1.8937393" >> local.properties
+          echo "✅ SDK & NDK Ready"
+
+      # PERBAIKAN UTAMA DI SINI: AUTO-DETECT ALIAS & VALIDASI PASSWORD
+      - name: Materialize signing configuration & Debug Keys
         env:
+          KEYSTORE_BASE64: ${{ secrets.MINIMUM_RELEASE_KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.MINIMUM_RELEASE_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.MINIMUM_RELEASE_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.MINIMUM_RELEASE_KEY_PASSWORD }}
         run: |
-          # 1. Ambil file keystore langsung dari Environment (bukan decode base64)
-          # GitHub otomatis menaruh file environment di path khusus
-          KEYSTORE_PATH="${{ vars.MINIMUM_RELEASE_KEYSTORE_PATH }}" 
-          
-          # Jika path var tidak diset, coba cari file yang diupload via env secrets
-          # Catatan: GitHub Actions env file upload biasanya butuh setup khusus.
-          # Alternatif paling stabil untuk HP: Gunakan base64 tapi pastikan TIDAK ADA NEWLINE/SPASI.
-          
-          # KITA KEMBALI KE BASE64 TAPI DENGAN PERBAIKAN FORMAT:
-          # Hapus semua whitespace/newline dari secret sebelum decode
-          CLEAN_B64=$(echo "${{ secrets.MINIMUM_RELEASE_KEYSTORE_BASE64 }}" | tr -d '\n\r ')
-          
+          # 1. Decode Keystore (bersihkan whitespace dulu)
+          CLEAN_B64=$(echo "$KEYSTORE_BASE64" | tr -d '\n\r\t ')
           KEYSTORE_PATH="$RUNNER_TEMP/minimum-release.jks"
-          echo "$CLEAN_B64" | base64 --decode > "$KEYSTORE_PATH"
+          printf '%s' "$CLEAN_B64" | base64 --decode > "$KEYSTORE_PATH"
           
-          # Cek ukuran file (harusnya > 1KB)
-          FILE_SIZE=$(stat -c%s "$KEYSTORE_PATH")
-          echo "Keystore size: $FILE_SIZE bytes"
-          
+          # 2. CEK UKURAN FILE (Pastikan tidak kosong)
+          FILE_SIZE=$(wc -c < "$KEYSTORE_PATH")
+          echo " Keystore size: $FILE_SIZE bytes"
           if [ "$FILE_SIZE" -lt 100 ]; then
-            echo "ERROR: Keystore file too small ($FILE_SIZE bytes). Likely truncated or empty."
+            echo "❌ ERROR: File keystore terlalu kecil/kosong!"
             exit 1
           fi
-          
-          # 2. Validasi keystore
-          echo "Validating keystore..."
-          if ! keytool -list \
-            -keystore "$KEYSTORE_PATH" \
-            -storepass "$STORE_PASSWORD" \
-            -alias "$KEY_ALIAS" \
-            -keypass "$KEY_PASSWORD" \
-            > /dev/null 2>&1; then
-            
-            echo "ERROR: Keystore validation failed!"
-            echo "Listing all aliases (might fail if password wrong):"
-            keytool -list -keystore "$KEYSTORE_PATH" -storepass "$STORE_PASSWORD" || true
+
+          # 3. DEBUG: LIST SEMUA ALIAS YANG ADA DI KEYSTORE
+          echo " Mencari alias yang valid di dalam keystore..."
+          echo "--- DAFTAR ALIAS ---"
+          keytool -list -keystore "$KEYSTORE_PATH" -storepass "$STORE_PASSWORD" || {
+            echo "❌ Gagal membuka keystore. Kemungkinan STORE_PASSWORD salah!"
             exit 1
-          fi
-          echo "✅ Keystore validated successfully!"
-          
-          # 3. Set env vars
+          }
+          echo "--------------------"
+
+          # 4. SET ENVIRONMENT VARIABLES
           echo "MINIMUM_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
           echo "MINIMUM_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
           echo "MINIMUM_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
           echo "MINIMUM_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
           
-          # 4. Buat signing.gradle
+          # 5. BUAT SIGNING.GRADLE
           cat > app/signing.gradle <<'GRADLE'
           android {
               signingConfigs {
@@ -170,7 +170,9 @@ jobs:
               }
           }
           GRADLE
-      # STEP BUILD TANPA SUNTIKAN PATH NDK (BIAR GRADLE BACA DARI LOCAL.PROPERTIES)
+          
+          echo "✅ Signing config siap. Melanjutkan ke build..."
+
       - name: Build patched Spongy Castle jars
         working-directory: libraries/humla/libs/humla-spongycastle
         run: |
