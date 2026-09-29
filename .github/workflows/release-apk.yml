@@ -104,32 +104,40 @@ jobs:
           java-version: "21"
           cache: gradle
 
-      # STEP SETUP SDK & NDK YANG SUDAH DIPERBAIKI
+      # STEP SETUP SDK & NDK LENGKAP (INSTALL 2 VERSI NDK)
       - name: Setup Android SDK & Install Pinned NDK
         run: |
           export ANDROID_HOME=/usr/local/lib/android/sdk
           export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
           
-          # Path NDK yang pasti
-          NDK_PATH=$ANDROID_HOME/ndk/26.1.10909125
+          # Path NDK utama (26.1) dan NDK tambahan (25.1) sesuai error log
+          NDK_PATH_26=$ANDROID_HOME/ndk/26.1.10909125
+          NDK_PATH_25=$ANDROID_HOME/ndk/25.1.8937393
           
           echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
           echo "PATH=$PATH" >> $GITHUB_ENV
-          echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$NDK_PATH_26" >> $GITHUB_ENV
           
           yes | sdkmanager --licenses > /dev/null 2>&1
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125" "platform-tools"
           
-          # Verifikasi folder NDK ada
-          if [ ! -d "$NDK_PATH" ]; then
-            echo "ERROR: NDK folder not found!"
+          # Install API 34, Build Tools, DAN KEDUA VERSI NDK
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" \
+            "ndk;26.1.10909125" \
+            "ndk;25.1.8937393" \
+            "platform-tools"
+          
+          # Verifikasi kedua folder ada
+          if [ ! -d "$NDK_PATH_26" ] || [ ! -d "$NDK_PATH_25" ]; then
+            echo "ERROR: One or both NDK folders missing!"
             ls -la $ANDROID_HOME/ndk/
             exit 1
           fi
           
-          # Buat local.properties agar Gradle root project tahu path NDK
-          echo "ndk.dir=$NDK_PATH" > local.properties
+          # Buat local.properties dengan path NDK 26.1 sebagai default
+          echo "ndk.dir=$NDK_PATH_26" > local.properties
           echo "sdk.dir=$ANDROID_HOME" >> local.properties
+          
+          echo "✅ Both NDK versions installed successfully"
 
       - name: Materialize signing configuration
         env:
