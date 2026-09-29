@@ -107,17 +107,36 @@ jobs:
       # STEP SETUP SDK & NDK - INSTALL VERSI 25.1 SESUAI PERMINTAAN BUILD.GRADLE
       - name: Materialize and validate signing configuration
         env:
-          KEYSTORE_BASE64: ${{ secrets.MINIMUM_RELEASE_KEYSTORE_BASE64 }}
           STORE_PASSWORD: ${{ secrets.MINIMUM_RELEASE_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.MINIMUM_RELEASE_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.MINIMUM_RELEASE_KEY_PASSWORD }}
         run: |
-          # 1. Decode keystore dari Base64 (HAPUS --strict)
-          KEYSTORE_PATH="$RUNNER_TEMP/minimum-release.jks"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          # 1. Ambil file keystore langsung dari Environment (bukan decode base64)
+          # GitHub otomatis menaruh file environment di path khusus
+          KEYSTORE_PATH="${{ vars.MINIMUM_RELEASE_KEYSTORE_PATH }}" 
           
-          # 2. Validasi keystore menggunakan keytool
-          echo " Validating keystore..."
+          # Jika path var tidak diset, coba cari file yang diupload via env secrets
+          # Catatan: GitHub Actions env file upload biasanya butuh setup khusus.
+          # Alternatif paling stabil untuk HP: Gunakan base64 tapi pastikan TIDAK ADA NEWLINE/SPASI.
+          
+          # KITA KEMBALI KE BASE64 TAPI DENGAN PERBAIKAN FORMAT:
+          # Hapus semua whitespace/newline dari secret sebelum decode
+          CLEAN_B64=$(echo "${{ secrets.MINIMUM_RELEASE_KEYSTORE_BASE64 }}" | tr -d '\n\r ')
+          
+          KEYSTORE_PATH="$RUNNER_TEMP/minimum-release.jks"
+          echo "$CLEAN_B64" | base64 --decode > "$KEYSTORE_PATH"
+          
+          # Cek ukuran file (harusnya > 1KB)
+          FILE_SIZE=$(stat -c%s "$KEYSTORE_PATH")
+          echo "Keystore size: $FILE_SIZE bytes"
+          
+          if [ "$FILE_SIZE" -lt 100 ]; then
+            echo "ERROR: Keystore file too small ($FILE_SIZE bytes). Likely truncated or empty."
+            exit 1
+          fi
+          
+          # 2. Validasi keystore
+          echo "Validating keystore..."
           if ! keytool -list \
             -keystore "$KEYSTORE_PATH" \
             -storepass "$STORE_PASSWORD" \
@@ -125,26 +144,20 @@ jobs:
             -keypass "$KEY_PASSWORD" \
             > /dev/null 2>&1; then
             
-            echo " ERROR: Keystore validation failed!"
-            echo "Possible causes:"
-            echo "  - Wrong store password or key password"
-            echo "  - Wrong alias (case-sensitive)"
-            echo "  - Corrupted keystore file (bad base64 encoding)"
-            
-            # Coba list semua alias untuk debugging
-            echo "Listing all aliases in keystore:"
+            echo "ERROR: Keystore validation failed!"
+            echo "Listing all aliases (might fail if password wrong):"
             keytool -list -keystore "$KEYSTORE_PATH" -storepass "$STORE_PASSWORD" || true
             exit 1
           fi
           echo "✅ Keystore validated successfully!"
           
-          # 3. Set environment variables untuk Gradle
+          # 3. Set env vars
           echo "MINIMUM_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
           echo "MINIMUM_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
           echo "MINIMUM_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
           echo "MINIMUM_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
           
-          # 4. Buat file signing.gradle
+          # 4. Buat signing.gradle
           cat > app/signing.gradle <<'GRADLE'
           android {
               signingConfigs {
@@ -157,7 +170,6 @@ jobs:
               }
           }
           GRADLE
-
       # STEP BUILD TANPA SUNTIKAN PATH NDK (BIAR GRADLE BACA DARI LOCAL.PROPERTIES)
       - name: Build patched Spongy Castle jars
         working-directory: libraries/humla/libs/humla-spongycastle
